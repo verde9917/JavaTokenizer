@@ -11,13 +11,13 @@ public class TokenizerTest {
 	@Test
 	public void Test() {
 		Tokenizer tokenizer = new Tokenizer();
-		tokenizer.setInput(Paths.get(".\\sample\\example1.java"));
-		tokenizer.setNormalize(true);
-		try {
-			tokenizer.tokenizeSubDirFile();
-		} catch (IOException | InvalidInputException e) {
-			e.printStackTrace();
-		}
+//		tokenizer.setInput(Paths.get(".\\sample\\example1.java"));
+//		tokenizer.setNormalize(true);
+//		try {
+//			tokenizer.tokenizeFile();
+//		} catch (IOException | InvalidInputException e) {
+//			e.printStackTrace();
+//		}
 	}
 	
 }

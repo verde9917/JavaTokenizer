@@ -1,9 +1,14 @@
 package masa.tokenizer;
 
-import java.io.FileWriter;
-import java.io.IOException;
+import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
 
 import org.eclipse.jdt.core.ToolFactory;
 import org.eclipse.jdt.core.compiler.IScanner;
@@ -11,67 +16,31 @@ import org.eclipse.jdt.core.compiler.ITerminalSymbols;
 import org.eclipse.jdt.core.compiler.InvalidInputException;
 
 public class Tokenizer {
-	
-	private Options options = new Options();
-	
-	public Tokenizer(Options options) {
-		this.options = options;
+
+	private ArrayList<String> targetFiles;
+	private String commonPath;
+	private String commonOutputPath;
+
+	public Tokenizer(){ }
+
+	public Tokenizer(String[] args) {
+		targetFiles = new ArrayList<>();
+		this.commonPath = preprocessPath(args[0]);
+		this.commonOutputPath = preprocessPath(args[1]);
 	}
 	
-	public Tokenizer() {
-	}
-	
-	public String tokenizeSource(String source) throws InvalidInputException {
-		IScanner scanner = ToolFactory.createScanner(false, false, true, "1.9");
+	public String tokenizeFile(String source) throws InvalidInputException {
+		IScanner scanner = ToolFactory.createScanner(false, false, true, "1.8");
 		StringBuilder sb = new StringBuilder();
 		scanner.setSource(source.toCharArray());
 		int tokens;
 		while ((tokens = scanner.getNextToken()) != ITerminalSymbols.TokenNameEOF) {
-			if (options.isDebugMode) {
-				System.out.println(tokens + " | " + new String(scanner.getCurrentTokenSource()));
-			}
 			String token = this.replaceEscapeChar(new String(scanner.getCurrentTokenSource()));
-			
-			if (options.isNormalize) {
-				token = this.NomalizeToken(token, tokens);
-			}
 			sb.append(token);
 			sb.append("\n");
 		}
-		sb.append('\n');
+		sb.setLength(sb.length() - 1);
 		return sb.toString();
-	}
-	
-	public String tokenizeFile(Path path) throws IOException {
-		String source = new String(Files.readAllBytes(path));
-		try {
-			return this.tokenizeSource(source);
-		} catch (InvalidInputException e) {
-			e.printStackTrace();
-			return null;
-		}
-	}
-	
-	public String tokenizeSubDirFile() throws IOException, InvalidInputException {
-		options.setInputFiles();
-		System.err.println("### " + options.inputFiles.size() + " files tokinizing ...");
-		StringBuilder sb = new StringBuilder();
-		for (Path path : options.inputFiles) {
-			sb.append(this.tokenizeFile(path));
-		}
-		this.output(sb.toString());
-		System.err.println("### finished tokenize");
-		return sb.toString();
-	}
-	
-	private String NomalizeToken(String token, int tokens) {
-		if (tokens == ITerminalSymbols.TokenNameStringLiteral) {
-			token = "__StringLiteral";
-		}
-		if (tokens == ITerminalSymbols.TokenNameIdentifier) {
-			token = "__Identifier";
-		}
-		return token;
 	}
 	
 	private String replaceEscapeChar(String str) {
@@ -90,50 +59,94 @@ public class Tokenizer {
 		
 		return token;
 	}
-	
-	private void output(String tokenized) {
-		if (this.options.isOutputStdin) {
-			this.outputStdin(tokenized);
-		} else {
-			this.outputFile(tokenized);
-		}
-	}
-	
-	private void outputFile(String tokenized) {
+
+	private static void writeFile(final String text, final Path path) {
 		try {
-			FileWriter fw = new FileWriter(options.output.toFile());
-			fw.write(tokenized);
-			fw.close();
-			
-		} catch (IOException e) {
+			final Path parentDir = path.getParent();
+			if (!Files.exists(parentDir)) {
+				Files.createDirectories(parentDir);
+			}
+			List<String> texts = new ArrayList<>();
+			texts.add(text);
+			Files.write(path, texts, StandardCharsets.UTF_8);
+		} catch (final IOException e) {
 			e.printStackTrace();
 		}
-		
 	}
-	
-	private void outputStdin(String tokenized) {
-		System.out.println(tokenized);
-	}
-	
-	public void setShowUsage(boolean isShowUsage) {
-		this.options.isShowUsage = isShowUsage;
-	}
-	
-	public void setInput(Path input) {
-		this.options.input = input;
-	}
-	
-	public void setOutput(Path output) {
-		this.options.output = output;
-	}
-	
-	public void setNormalize(boolean isNormalize) {
-		this.options.isNormalize = isNormalize;
-	}
+
 	
 	public static void main(String[] args) throws Exception {
-		Options options = new Options(args);
-		Tokenizer tokenizer = new Tokenizer(options);
-		tokenizer.tokenizeSubDirFile();
+		new Tokenizer(args).run(args);
 	}
+
+	public void run(String[] args) throws InvalidInputException {
+		String inputPath = preprocessPath(args[0]);
+		String extension = ".java";
+		storeFiles(inputPath, extension);
+		for (String path : targetFiles) {
+			File file = new File(path);
+			String code = readFile(path);
+			String tokenizedCode = "";
+			if(file.length()!=0){
+				tokenizedCode = tokenizeFile(code);
+			} else {
+				tokenizedCode = code;
+			}
+			String outputPath = this.commonOutputPath + path.replace(this.commonPath, "");
+			writeFile(tokenizedCode, Paths.get(outputPath));
+		}
+	}
+
+	private String preprocessPath(String path) {
+		String home = System.getProperty("user.home");
+		String inputPath = path;
+		inputPath = inputPath.replace("~", home);
+		File file = new File(inputPath);
+		if (!file.isAbsolute()) {
+			try {
+				inputPath = Paths.get(inputPath).toRealPath(LinkOption.NOFOLLOW_LINKS).toString();
+			} catch (IOException e) {
+				System.out.println(e);
+			}
+		}
+		return inputPath;
+	}
+
+	private void storeFiles(String path, String extension) {
+		if (path.endsWith(extension)) {
+			String newFile = path;
+			newFile = newFile.replaceAll("//", "/");
+			targetFiles.add(newFile);
+		} else {
+			File dir = new File(path);
+			File[] files = dir.listFiles();
+			for (File file : Objects.requireNonNull(files)) {
+				String file_name = file.getName();
+				if (file.isDirectory()) {
+					storeFiles(path + "/" + file_name, extension);
+				} else {
+					if (file_name.endsWith(extension)) {
+						String newFile = path + "/" + file_name;
+						newFile = newFile.replaceAll("//", "/");
+						targetFiles.add(newFile);
+					}
+				}
+			}
+		}
+	}
+
+	private String readFile(String path) {
+		StringBuilder builder = new StringBuilder();
+		try (BufferedReader reader = new BufferedReader(new FileReader(path))) {
+			String string = reader.readLine();
+			while (string != null) {
+				builder.append(string + System.getProperty("line.separator"));
+				string = reader.readLine();
+			}
+		} catch (IOException e) {
+			System.err.println(e);
+		}
+		return builder.toString();
+	}
+
 }
