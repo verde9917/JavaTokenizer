@@ -36,7 +36,7 @@ public class Tokenizer {
 				token = this.NomalizeToken(token, tokens);
 			}
 			sb.append(token);
-			sb.append(" ");
+			sb.append("\n");
 		}
 		sb.append('\n');
 		return sb.toString();
